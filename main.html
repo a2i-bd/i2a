@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MicroFinance Pro</title>
+    <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@latest/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --card-bg: #ffffff;
+            --border-color: #dddddd;
+            --primary-color: #007bff;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #ffffff;
+            --card-bg: #2d2d2d;
+            --border-color: #404040;
+            --primary-color: #4dabf7;
+        }
+
+        * {
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 1rem;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding-bottom: 80px;
+        }
+
+        .balance-card {
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 15px;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--card-bg);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 1rem 0;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-item.active {
+            color: var(--primary-color);
+        }
+
+        .pay-button {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 30px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1001;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 10px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            cursor: pointer;
+        }
+
+        .section {
+            display: none;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s ease-in-out;
+        }
+
+        .section.active {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <!-- Biometric Auth -->
+    <div class="auth-section" id="authSection">
+        <h2>MicroFinance Pro</h2>
+        <button onclick="registerBiometric()"><i class="fas fa-fingerprint"></i> Register</button>
+        <button onclick="authenticateBiometric()"><i class="fas fa-fingerprint"></i> Login</button>
+    </div>
+
+    <!-- Main App -->
+    <div id="appContainer" style="display: none;" class="container">
+        <!-- Theme Toggle -->
+        <div class="theme-toggle" onclick="toggleDarkMode()">
+            <i class="fas fa-moon"></i>
+        </div>
+
+        <!-- Balance Card -->
+        <div class="balance-card section active" id="homeSection">
+            <h2>Available Balance</h2>
+            <h1 id="balance">£0.00</h1>
+        </div>
+
+        <!-- Transactions Section -->
+        <div class="section" id="transactionsSection">
+            <h3>Recent Transactions</h3>
+            <table id="transactionsTable"></table>
+        </div>
+
+        <!-- Pay Section -->
+        <div class="section" id="paySection">
+            <form id="paymentForm">
+                <input type="text" id="recipient" placeholder="Recipient" required>
+                <input type="number" id="amount" placeholder="Amount" required>
+                <select id="category">
+                    <option>Food</option>
+                    <option>Utilities</option>
+                    <option>Rent</option>
+                </select>
+                <button type="submit">Pay</button>
+                <button type="button" onclick="showQRModal()"><i class="fas fa-qrcode"></i></button>
+            </form>
+        </div>
+
+        <!-- Activity Section -->
+        <div class="section" id="activitySection">
+            <div id="activityList"></div>
+        </div>
+
+        <!-- Bottom Navigation -->
+        <div class="bottom-nav">
+            <div class="nav-item active" onclick="showSection('homeSection')"><i class="fas fa-home"></i></div>
+            <button class="pay-button" onclick="showSection('paySection')">Pay</button>
+            <div class="nav-item" onclick="showSection('activitySection')"><i class="fas fa-history"></i></div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal" id="confirmationModal">
+        <div class="modal-content">
+            <h3>Confirm Payment</h3>
+            <p id="confirmationText"></p>
+            <button onclick="confirmPayment()">Confirm</button>
+            <button onclick="closeModal('confirmationModal')">Cancel</button>
+        </div>
+    </div>
+
+    <div class="modal" id="qrModal">
+        <div class="modal-content">
+            <div id="qrcode"></div>
+            <button onclick="closeModal('qrModal')">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // Database Setup
+        const db = new Dexie("MicroFinanceDB");
+        db.version(4).stores({
+            transactions: '++id,recipient,amount,category,date',
+            activities: '++id,description,date',
+            biometrics: '++id,credential'
+        });
+
+        // Auth Functions
+        async function registerBiometric() {
+            try {
+                const credential = await navigator.credentials.create({
+                    publicKey: {
+                        challenge: new Uint8Array(32),
+                        rp: { name: "MicroFinance" },
+                        user: { id: new Uint8Array(16), name: "user", displayName: "User" },
+                        pubKeyCredParams: [{ type: "public-key", alg: -7 }]
+                    }
+                });
+                await db.biometrics.add({ credential });
+                showApp();
+            } catch (error) {
+                console.error('Biometric registration failed:', error);
+            }
+        }
+
+        async function authenticateBiometric() {
+            try {
+                const credential = await navigator.credentials.get({ publicKey: { challenge: new Uint8Array(32) } });
+                if (credential) showApp();
+            } catch (error) {
+                console.error('Authentication failed:', error);
+            }
+        }
+
+        function showApp() {
+            document.getElementById('authSection').style.display = 'none';
+            document.getElementById('appContainer').style.display = 'block';
+            loadTransactions();
+            updateBalance();
+        }
+
+        // Payment Functions
+        document.getElementById('paymentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const transaction = {
+                recipient: document.getElementById('recipient').value,
+                amount: parseFloat(document.getElementById('amount').value),
+                category: document.getElementById('category').value,
+                date: new Date().toISOString()
+            };
+            document.getElementById('confirmationText').textContent = 
+                `Pay £${transaction.amount} to ${transaction.recipient}?`;
+            showModal('confirmationModal');
+        });
+
+        async function confirmPayment() {
+            const transaction = {
+                recipient: document.getElementById('recipient').value,
+                amount: parseFloat(document.getElementById('amount').value),
+                category: document.getElementById('category').value,
+                date: new Date().toISOString()
+            };
+            await db.transactions.add(transaction);
+            updateBalance();
+            loadTransactions();
+            closeModal('confirmationModal');
+        }
+
+        // QR Code
+        function showQRModal() {
+            QRCode.toCanvas(document.getElementById('qrcode'), 
+                `microfinance://payment?recipient=${document.getElementById('recipient').value}&amount=${document.getElementById('amount').value}`,
+                { width: 200 }, (error) => {
+                    if (error) console.error(error);
+                });
+            showModal('qrModal');
+        }
+
+        // Dark Mode
+        function toggleDarkMode() {
+            document.body.setAttribute('data-theme',
+                document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'
+            );
+            localStorage.setItem('theme', document.body.getAttribute('data-theme'));
+        }
+
+        // UI Functions
+        function showModal(id) {
+            document.getElementById(id).style.display = 'block';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        function showSection(sectionId) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.getElementById(sectionId).classList.add('active');
+        }
+
+        async function loadTransactions() {
+            const transactions = await db.transactions.toArray();
+            const table = document.getElementById('transactionsTable');
+            table.innerHTML = `
+                <tr>
+                    <th>Recipient</th>
+                    <th>Amount</th>
+                    <th>Date</th>
+                </tr>
+                ${transactions.map(t => `
+                    <tr>
+                        <td>${t.recipient}</td>
+                        <td>£${t.amount}</td>
+                        <td>${new Date(t.date).toLocaleDateString()}</td>
+                    </tr>
+                `).join('')}
+            `;
+        }
+
+        async function updateBalance() {
+            const transactions = await db.transactions.toArray();
+            const balance = transactions.reduce((acc, t) => acc - t.amount, 0);
+            document.getElementById('balance').textContent = `£${Math.abs(balance).toFixed(2)}`;
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            document.body.setAttribute('data-theme', localStorage.getItem('theme') || 'light');
+            if('credentials' in navigator) {
+                db.biometrics.count().then(count => {
+                    if(count > 0) document.getElementById('authSection').style.display = 'block';
+                });
+            }
+        });
+    </script>
+</body>
+</html>
